@@ -1,272 +1,181 @@
-# Experiment 3 + Docker: Maven, JUnit 5, Docker and Docker Hub
+# Experiment: Maven + JUnit + GitHub Actions + Docker Hub
 
-## What this pipeline does
+## 1. Objective
 
-This README follows the supplied **Experiment 3 -- Automated Build and
-Dependency Management Using Apache Maven** and extends its generated
-Java artifact into a Docker image using the Docker Hub procedure from
-**Experiment 4 -- Application Containerization Using Docker**.
+Create a Java Maven project, write JUnit tests, push the project to GitHub, and use GitHub Actions to run the tests and automatically publish a Docker image to Docker Hub after the tests pass.
 
-**Pipeline:** Eclipse Maven project → Student Grade Calculator → JUnit 5
-→ `mvn clean package` → JAR/classes → Docker image → Docker Hub access
-token → `docker login` → `docker tag` → `docker push` → `docker pull` on
-another computer → `docker run`.
+**Publishing is automated.** Do not run manual `docker login`, `docker tag`, or `docker push` commands. You create a Docker Hub access token once and store it as a GitHub repository secret.
 
-> Scope: No Kubernetes is used. Experiment 3 itself ends at the JAR and
-> GitHub Actions Maven build. The Docker steps below are the
-> containerization extension needed to continue that project to Docker
-> Hub. The source Experiment 4 uses Tomcat for a static HTML
-> application; this Maven Java application is not a Tomcat web
-> application, so its Dockerfile uses a Java runtime instead.
+## 2. Requirements
 
-## 1. Prerequisites
+- JDK 17
+- Eclipse IDE with Maven support (or another Java IDE)
+- Git and GitHub account
+- Docker Hub account
+- Docker Desktop for optional local container testing
 
--   Windows 10/11
--   Eclipse IDE for Java Developers with Maven (m2e)
--   JDK 17 or later
--   Git
--   Docker Desktop, installed and running
--   GitHub account
--   Docker Hub account
--   Internet connection
+Check in PowerShell:
 
-Open PowerShell and verify:
-
-``` powershell
+```powershell
 java -version
 git --version
 docker --version
-docker info
 ```
 
-If `docker info` cannot connect to the daemon, start Docker Desktop and
-wait until the engine is running.
+## 3. Create the Maven project
 
-## 2. Create the Maven project in Eclipse
+In Eclipse, choose **File → New → Maven Project**. Select `maven-archetype-quickstart` version `1.5`.
 
-1.  Open Eclipse and choose your workspace.
-2.  Select **File → New → Maven Project**. If it is not listed, choose
-    **File → New → Other → Maven → Maven Project**.
-3.  Select the `maven-archetype-quickstart` archetype, version `1.5`.
-4.  Enter these coordinates:
+Use:
 
-  Field         Value
-  ------------- ---------------------
-  Group Id      `com.example`
-  Artifact Id   `maven-github-demo`
-  Version       `1.0-SNAPSHOT`
-  Package       `com.example`
+| Field | Value |
+|---|---|
+| Group Id | `com.example` |
+| Artifact Id | `maven-github-demo` |
+| Version | `1.0-SNAPSHOT` |
+| Package | `com.example` |
 
-5.  Click **Finish**. If prompted, type `Y`.
-6.  The generated `App.java` and `AppTest.java` are starter files.
-    Replace them as described below.
+## 4. Configure `pom.xml`
 
-Expected initial Maven layout:
+Replace the generated POM with:
 
-``` text
-maven-github-demo/
-├── src/
-│   ├── main/java/com/example/
-│   └── test/java/com/example/
-└── pom.xml
-```
-
-## 3. Configure `pom.xml` for Java 17 and JUnit 5
-
-Open `pom.xml`. Retain the generated project coordinates and make sure
-the properties, dependency and Surefire plugin below are present. Remove
-the archetype's old JUnit dependency/configuration rather than leaving
-conflicting test dependencies.
-
-``` xml
-<properties>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
+```xml
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>maven-github-demo</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-</properties>
-
-<dependencies>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+  <dependencies>
     <dependency>
-        <groupId>org.junit.jupiter</groupId>
-        <artifactId>junit-jupiter</artifactId>
-        <version>5.10.2</version>
-        <scope>test</scope>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
     </dependency>
-</dependencies>
-
-<build>
+  </dependencies>
+  <build>
     <plugins>
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-surefire-plugin</artifactId>
-            <version>3.2.5</version>
-        </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration><release>17</release></configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
     </plugins>
-</build>
+  </build>
+</project>
 ```
 
-Save the file. In Eclipse, right-click the project → **Maven → Update
-Project** if dependencies do not refresh.
+## 5. Create the Java application
 
-## 4. Create the Student Grade Calculator
+Create `src/main/java/com/example/GradeCalculator.java`:
 
-Under `src/main/java`, inside package `com.example`, replace `App.java`
-with `GradeCalculator.java`:
-
-``` java
+```java
 package com.example;
 
 public class GradeCalculator {
-
-    public static int calculateTotal(int m1, int m2, int m3) {
-        return m1 + m2 + m3;
+    public int total(int a, int b, int c) {
+        return a + b + c;
     }
 
-    public static double calculateAverage(int m1, int m2, int m3) {
-        return calculateTotal(m1, m2, m3) / 3.0;
+    public double average(int a, int b, int c) {
+        return total(a, b, c) / 3.0;
     }
 
-    public static boolean isPass(double average) {
-        return average >= 40.0;
+    public String result(double average) {
+        return average >= 40 ? "PASS" : "FAIL";
     }
 
     public static void main(String[] args) {
-        int m1 = 75, m2 = 68, m3 = 82;
-
-        int total = calculateTotal(m1, m2, m3);
-        double average = calculateAverage(m1, m2, m3);
-
+        GradeCalculator g = new GradeCalculator();
+        int total = g.total(70, 80, 75);
+        double average = g.average(70, 80, 75);
         System.out.println("Total   : " + total);
         System.out.println("Average : " + average);
-        System.out.println("Result : " + (isPass(average) ? "PASS" : "FAIL"));
+        System.out.println("Result  : " + g.result(average));
     }
 }
 ```
 
-Run `GradeCalculator.java` using **Run As → Java Application**. Expected
-console values:
+## 6. Create JUnit tests
 
-``` text
-Total   : 225
-Average : 75.0
-Result : PASS
-```
+Create `src/test/java/com/example/GradeCalculatorTest.java`:
 
-## 5. Create the JUnit 5 test class
-
-Under `src/test/java`, inside package `com.example`, replace the
-generated `AppTest.java` with `GradeCalculatorTest.java`:
-
-``` java
+```java
 package com.example;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.Test;
 
 class GradeCalculatorTest {
+    private final GradeCalculator calculator = new GradeCalculator();
 
     @Test
-    void testTotal() {
-        assertEquals(225, GradeCalculator.calculateTotal(75, 68, 82));
+    void totalTest() {
+        assertEquals(225, calculator.total(70, 80, 75));
     }
 
     @Test
-    void testAverage() {
-        assertEquals(75.0, GradeCalculator.calculateAverage(75, 68, 82));
+    void averageTest() {
+        assertEquals(75.0, calculator.average(70, 80, 75), 0.001);
     }
 
     @Test
-    void testPass() {
-        assertTrue(GradeCalculator.isPass(75.0));
+    void passTest() {
+        assertEquals("PASS", calculator.result(75.0));
     }
 
     @Test
-    void testFail() {
-        assertFalse(GradeCalculator.isPass(35.0));
+    void failTest() {
+        assertEquals("FAIL", calculator.result(35.0));
     }
 }
 ```
 
-Right-click `GradeCalculatorTest.java` → **Run As → JUnit Test**. Verify
-all four tests pass.
+## 7. Test locally
 
-## 6. Run Maven lifecycle goals in Eclipse
+From the project root (the directory containing `pom.xml`):
 
-For each command below, right-click the project → **Run As → Maven
-build...**, enter the goal, and click **Run**.
-
-  Goal                Purpose
-  ------------------- --------------------------------------------------
-  `clean`             Removes previous `target` build output
-  `test`              Compiles and executes JUnit tests
-  `clean package`     Cleans, compiles, tests and packages the project
-  `dependency:tree`   Displays JUnit and transitive dependencies
-
-For the pipeline, run:
-
-``` powershell
+```powershell
+mvn clean test
 mvn clean package
 ```
 
-Expected result: `BUILD SUCCESS`.
+Proceed only when Maven reports `BUILD SUCCESS` and all four tests pass.
 
-Refresh the project and inspect:
+## 8. Push the project to GitHub
 
-``` text
-target/
-├── classes/
-├── test-classes/
-├── surefire-reports/
-└── maven-github-demo-1.0-SNAPSHOT.jar
-```
+Create a GitHub repository named `maven-github-demo`. Then run from the project root:
 
-The supplied Experiment 3 creates the JAR but does not configure it as
-an executable/fat JAR. The Dockerfile in this README therefore runs the
-compiled application class from `target/classes`, rather than assuming
-the JAR has a `Main-Class` manifest or bundled dependencies.
-
-## 7. Add `.gitignore`
-
-Create `.gitignore` at the project root:
-
-``` gitignore
-target/
-.classpath
-.project
-.settings/
-*.log
-```
-
-Do not commit Maven's generated `target/` folder.
-
-## 8. Push the Maven project to GitHub
-
-Create a GitHub repository named `maven-github-demo` (or use your own
-repository name). Do not initialize it with a README if you already have
-a local project.
-
-Open PowerShell in the project root and run:
-
-``` powershell
+```powershell
 git init
 git add .
-git commit -m "Initial Maven project"
+git commit -m "Create Maven JUnit project"
 git branch -M main
-git remote add origin https://github.com/<YOUR-USERNAME>/maven-github-demo.git
+git remote add origin https://github.com/YOUR-GITHUB-USERNAME/maven-github-demo.git
 git push -u origin main
 ```
 
-Replace `<YOUR-USERNAME>` and the repository URL with your own. If
-`origin` already exists, use
-`git remote set-url origin <YOUR-REPOSITORY-URL>` instead of adding it
-again.
+Replace the username placeholder with your GitHub username.
 
-## 9. Add the Maven GitHub Actions build
+## 9. Add GitHub Actions workflow
 
-Create `.github/workflows/maven.yml`:
+Create `.github/workflows/ci.yml`:
 
-``` yaml
-name: Maven Build
+```yaml
+name: Maven Test and Docker Hub Publish
 
 on:
   push:
@@ -274,228 +183,36 @@ on:
   pull_request:
     branches: [ "main" ]
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Build with Maven
-        run: mvn clean package
-```
-
-Commit and push:
-
-``` powershell
-git add .github/workflows/maven.yml
-git commit -m "Add Maven GitHub Actions workflow"
-git push origin main
-```
-
-Open the GitHub repository → **Actions** → **Maven Build**. Confirm that
-checkout, JDK setup and `mvn clean package` succeed. The source
-experiment also asks you to demonstrate a failed test/build, inspect the
-Actions log, correct the test, and push again.
-
-## 10. Create the Dockerfile for this Maven application
-
-Create a file named exactly `Dockerfile` (no `.txt` extension) in the
-project root.
-
-``` dockerfile
-# Build stage: Maven compiles and packages the project
-FROM maven:3.9.6-eclipse-temurin-17 AS build
-WORKDIR /app
-
-COPY pom.xml .
-COPY src ./src
-
-RUN mvn clean package -DskipTests
-
-# Runtime stage: run the compiled Java application
-FROM eclipse-temurin:17-jre
-WORKDIR /app
-
-COPY --from=build /app/target/classes ./classes
-
-CMD ["java", "-cp", "classes", "com.example.GradeCalculator"]
-```
-
-Why `-DskipTests` in the image build stage? The Maven/JUnit verification
-is already performed before image publishing in the CI workflow below.
-The Docker build still compiles and packages the application. For a
-local all-in-one validation, run `mvn clean package` first so tests are
-executed before building the image.
-
-This container runs the GradeCalculator Java application. It does not
-expose a web port because this experiment's Java program is a console
-application, not a web server.
-
-## 11. Build and run the Docker image locally
-
-From PowerShell in the project root:
-
-``` powershell
-docker build -t maven-github-demo:1.0 .
-docker images
-docker run --rm maven-github-demo:1.0
-```
-
-Expected container output:
-
-``` text
-Total   : 225
-Average : 75.0
-Result : PASS
-```
-
-`--rm` removes the stopped container after the program exits. The image
-remains on your computer.
-
-## 12. Create a Docker Hub repository
-
-1.  Sign in to Docker Hub.
-2.  Open **My Hub** and choose **Create repository**.
-3.  Repository name: `maven-github-demo`.
-4.  Select Public or Private as required.
-5.  Create the repository.
-
-Your image name will follow this format:
-
-``` text
-<DOCKERHUB_USERNAME>/maven-github-demo:1.0
-```
-
-Use your own Docker Hub username. Do not copy usernames or repository
-names from sample screenshots.
-
-## 13. Generate a Docker Hub access token
-
-Do not put your Docker Hub account password in scripts or GitHub
-workflow files.
-
-1.  In Docker Hub, open your profile avatar → **Account Settings**.
-2.  Open **Security**.
-3.  Under **Personal access tokens**, choose **Generate new token**.
-4.  Give it a name such as `Maven-GitHub-Publish`.
-5.  Grant **Read & Write** permissions for pushing and pulling images.
-6.  Generate the token and copy it immediately. Docker Hub may not show
-    it again.
-7.  Store it privately. Never paste it into your README, source code,
-    screenshots, or Git repository.
-
-If a real access token is ever committed or exposed, revoke it in Docker
-Hub and generate a replacement.
-
-## 14. Log in to Docker Hub and push the image
-
-In PowerShell, tag the local image using your Docker Hub username:
-
-``` powershell
-docker tag maven-github-demo:1.0 <DOCKERHUB_USERNAME>/maven-github-demo:1.0
-```
-
-Log in. When prompted, enter your Docker Hub username and paste the
-access token as the password:
-
-``` powershell
-docker login --username <DOCKERHUB_USERNAME>
-```
-
-Then push:
-
-``` powershell
-docker push <DOCKERHUB_USERNAME>/maven-github-demo:1.0
-```
-
-Check Docker Hub → your repository → **Tags**. The `1.0` tag should
-appear.
-
-## 15. Pull and run the image on another computer
-
-On Computer 2:
-
-1.  Install Docker Desktop and make sure it is running.
-2.  Open PowerShell.
-3.  For a private repository, log in using an account with pull
-    permission. Public images can generally be pulled without logging
-    in.
-
-``` powershell
-docker login
-docker pull <DOCKERHUB_USERNAME>/maven-github-demo:1.0
-docker images
-docker run --rm <DOCKERHUB_USERNAME>/maven-github-demo:1.0
-```
-
-Expected output is the same GradeCalculator output. This verifies that
-the image stored on Docker Hub can be downloaded and executed on another
-computer.
-
-## 16. Optional: make GitHub Actions publish the image automatically
-
-This is the CI extension of the manual Docker Hub process. It keeps the
-Maven test/build job separate from the image publishing job. The image
-is published only for a push to `main`, and only after the Maven job
-succeeds.
-
-### 16.1 Add GitHub repository secrets
-
-In GitHub, open your repository → **Settings → Secrets and variables →
-Actions → New repository secret**.
-
-Create:
-
-  Secret name            Value
-  ---------------------- ------------------------------------------
-  `DOCKERHUB_USERNAME`   Your Docker Hub username
-  `DOCKERHUB_TOKEN`      The Docker Hub Read & Write access token
-
-Do not hard-code either value in YAML.
-
-### 16.2 Replace `.github/workflows/maven.yml` with this workflow
-
-``` yaml
-name: Maven Build and Docker Hub Publish
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+permissions:
+  contents: read
 
 jobs:
   maven-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source code
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
           cache: maven
 
-      - name: Build and test with Maven
-        run: mvn clean package
+      - name: Run JUnit tests
+        run: mvn --batch-mode clean verify
 
-  build-and-publish:
+  docker-publish:
     needs: maven-test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout source code
+      - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -503,10 +220,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push Docker image
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -517,88 +231,102 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/maven-github-demo:${{ github.sha }}
 ```
 
-Commit and push:
+`needs: maven-test` makes publishing wait for successful tests. Pull requests run tests but do not publish an image.
 
-``` powershell
-git add Dockerfile .github/workflows/maven.yml
-git commit -m "Add Docker image build and Docker Hub publishing"
+## 10. Create the Dockerfile
+
+Create `Dockerfile` in the project root:
+
+```dockerfile
+FROM maven:3.9.9-eclipse-temurin-17 AS build
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn --batch-mode clean package -DskipTests
+
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+COPY --from=build /app/target/classes ./classes
+CMD ["java", "-cp", "classes", "com.example.GradeCalculator"]
+```
+
+The JUnit tests are run in the first GitHub Actions job. The Docker build compiles/packages the app and creates a runtime image.
+
+## 11. Create Docker Hub repository and access token
+
+1. Sign in to Docker Hub.
+2. Create a repository named `maven-github-demo`.
+3. Open **Account Settings → Security → Personal access tokens**.
+4. Generate a token with **Read & Write** permission.
+5. Copy it and store it securely.
+
+Never put the token in source code, YAML, screenshots, or Git history. Revoke it and generate a replacement if exposed.
+
+## 12. Add GitHub repository secrets
+
+Open the GitHub repository → **Settings → Secrets and variables → Actions → New repository secret**.
+
+Create:
+
+| Secret name | Value |
+|---|---|
+| `DOCKERHUB_USERNAME` | Your Docker Hub username |
+| `DOCKERHUB_TOKEN` | Your Docker Hub Read & Write access token |
+
+Do not hard-code these values in the workflow.
+
+## 13. Commit and push the Dockerfile and workflow
+
+```powershell
+git add Dockerfile .github/workflows/ci.yml
+git commit -m "Add automated Docker Hub publishing"
 git push origin main
 ```
 
-Open GitHub → **Actions**. The `build-and-publish` job must wait for
-`maven-test`. After a successful push to `main`, check Docker Hub for
-the `latest` tag and the commit-SHA tag.
+## 14. Verify the pipeline
 
-## 17. Troubleshooting
+1. Open GitHub → repository → **Actions**.
+2. Open the latest `Maven Test and Docker Hub Publish` run.
+3. Confirm `maven-test` succeeds.
+4. Confirm `docker-publish` runs afterwards and succeeds.
+5. Open Docker Hub → `maven-github-demo` → **Tags**.
+6. Confirm `latest` and the commit-SHA tag are present.
 
-  ------------------------------------------------------------------------------------
-  Problem                             Check
-  ----------------------------------- ------------------------------------------------
-  `docker` is not recognized          Install Docker Desktop, restart the terminal and
-                                      verify PATH
+Optional: pull and run the published image on a computer with Docker:
 
-  Cannot connect to Docker daemon     Start Docker Desktop and wait for Engine to run
+```powershell
+docker pull YOUR-DOCKERHUB-USERNAME/maven-github-demo:latest
+docker run --rm YOUR-DOCKERHUB-USERNAME/maven-github-demo:latest
+```
 
-  Dockerfile not found                Run commands from the project root; confirm the
-                                      file is named `Dockerfile`
+Expected output:
 
-  Maven tests fail                    Run `mvn clean test` and inspect the Surefire
-                                      reports under `target/surefire-reports/`
+```text
+Total   : 225
+Average : 75.0
+Result  : PASS
+```
 
-  Push denied                         Confirm login, token Read & Write permission,
-                                      repository name and username
+## 15. Final project structure
 
-  Image not found locally             Run `docker images` and verify the exact tag
-
-  Wrong image name                    Use
-                                      `<DOCKERHUB_USERNAME>/maven-github-demo:<tag>`
-                                      consistently
-
-  Container exits                     This is a short console program; use
-                                      `docker run --rm ...` to see its output
-  ------------------------------------------------------------------------------------
-
-## 18. Final project structure
-
-``` text
+```text
 maven-github-demo/
-├── .github/
-│   └── workflows/
-│       └── maven.yml
+├── .github/workflows/ci.yml
 ├── src/
-│   ├── main/
-│   │   └── java/com/example/GradeCalculator.java
-│   └── test/
-│       └── java/com/example/GradeCalculatorTest.java
+│   ├── main/java/com/example/GradeCalculator.java
+│   └── test/java/com/example/GradeCalculatorTest.java
 ├── Dockerfile
-├── .gitignore
 └── pom.xml
 ```
 
-## 19. Complete command sequence
+## Pipeline summary
 
-Run from the project root. Replace the Docker Hub placeholder before
-executing the tag and push commands.
-
-``` powershell
-mvn clean package
-docker build -t maven-github-demo:1.0 .
-docker run --rm maven-github-demo:1.0
-
-docker tag maven-github-demo:1.0 <DOCKERHUB_USERNAME>/maven-github-demo:1.0
-docker login --username <DOCKERHUB_USERNAME>
-docker push <DOCKERHUB_USERNAME>/maven-github-demo:1.0
-
-# On another computer
-docker pull <DOCKERHUB_USERNAME>/maven-github-demo:1.0
-docker run --rm <DOCKERHUB_USERNAME>/maven-github-demo:1.0
+```text
+Create Maven project → Write JUnit tests → Test locally
+→ Push to GitHub → GitHub Actions runs Maven tests
+→ If tests pass, build Docker image
+→ Authenticate using GitHub secrets
+→ Push image to Docker Hub → Verify tags
 ```
 
-## 20. Result
-
-The Student Grade Calculator Maven project is created in Eclipse,
-configured with JUnit 5, tested and packaged using Maven, stored in
-GitHub, and built as a Docker image. The image is tagged and pushed to
-Docker Hub, then pulled and run on another computer. The optional GitHub
-Actions extension automates Docker image publishing after the Maven
-build succeeds.
+No manual Docker Hub publishing commands and no Kubernetes are included.
