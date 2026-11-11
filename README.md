@@ -395,3 +395,5 @@ Verify image tags in Docker Hub
 ```
 
 **No manual Docker Hub publishing commands and no Kubernetes are included.**
+docker pull YOUR-DOCKERHUB-USERNAME/selenium-testng-automation:latest
+docker run --rm YOUR-DOCKERHUB-USERNAME/selenium-testng-automation:latest
